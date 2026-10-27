@@ -41,7 +41,7 @@ Shiroha Quiz 是一个轻量、开源的本地刷题工具，支持自导入题�
 1. **装 Python**：去 [python.org](https://www.python.org/downloads/) 下载安装。Windows 安装时**一定要勾选** `Add Python to PATH`。建议 Python 3.12 或更新（作者在 3.14 上开发）。
 2. **下载本项目**：右上角 `Code` → `Download ZIP`，解压到一个文件夹。
 3. **双击启动**，二选一：
-   - 终端界面：双击 `Start-Quiz.bat`
+   - 终端界面：双击 `Start-Quiz.bat`或者启动`quiz.py`
    - 网页界面：双击 `Start-Quiz-GUI.bat`（会自动打开浏览器）
 
 **零依赖**：装好 Python 就能跑，不用 `pip install`，不用虚拟环境，不用 Node.js。MathJax、PDF.js 等前端资源已随包离线携带。
@@ -52,7 +52,7 @@ Shiroha Quiz 是一个轻量、开源的本地刷题工具，支持自导入题�
 
 | | TUI（终端） | GUI（本地网页） |
 | --- | --- | --- |
-| 启动 | `Start-Quiz.bat` | `Start-Quiz-GUI.bat` |
+| 启动 | `Start-Quiz.bat 或者 quiz.py` | `Start-Quiz-GUI.bat` |
 | 界面 | 终端菜单，键盘操作 | 浏览器网页 |
 | 适合 | 专注刷题、单键操作 | 整理题库、公式渲染、夜间模式 |
 | 公式渲染 | 无 | 有（MathJax，离线） |
@@ -63,7 +63,7 @@ Shiroha Quiz 是一个轻量、开源的本地刷题工具，支持自导入题�
 
 ---
 
-## 功能概览
+## 功能概览（有些功能GUI版本上暂时没有，因为还没有大改GUI）
 
 **题库导入**
 - 格式：文本、CSV / TSV、JSON，以及“题目文件 + 答案文件”双文件导入。
