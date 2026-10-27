@@ -1,8 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<resources>
-    <color name="brand_primary">#4F7CFF</color>
-    <color name="surface">#EAF5FF</color>
-    <color name="system_bar">#EAF5FF</color>
-    <color name="splash_icon_bg">#E8EEFF</color>
-    <color name="launcher_background">#E8EEFF</color>
-</resources>
