@@ -2,7 +2,7 @@
 
 Shiroha Quiz 是一个轻量、开源的本地刷题工具，支持自导入题库、练习、考试、错题复习与云备份。
 
-本仓库是原 [Shiroha Quiz](https://github.com/reiqr/shiroha-quiz) 的 **Python 重构版**，主要供作者个人自用。重构过程大量使用 AI 辅助完成，作者不是专业开发者，功能以“自己够用”为准，不保证完整复刻上游，也不承诺长期维护。
+本仓库是原 [Shiroha Quiz](https://github.com/reiqr/shiroha-quiz) 的 **Python 重构版**，主要供作者个人自用。重构过程大量（其实是全部）使用 AI 辅助完成，作者不是专业开发者，功能以“自己够用”为准，不保证完整复刻上游，也不承诺长期维护。
 
 > [!WARNING]
 
