@@ -142,8 +142,6 @@ quiz_py/
 
 - 版本：**v0.10.x**
 - TUI 功能已与上游 Web 版基本对齐；GUI 正在补齐 SRS、搜索、统计等页面。
-- 回归测试共 16 套件、200 余项断言，当前全绿。
-- 尚未完成的收尾项：只读 / 空间探测、软锁、便携自检菜单、打包成 exe。
 
 > 具体变更见 `docs/CHANGELOG.md`，设计备忘见 `docs/NOTES.md`、`docs/ROADMAP.md`。
 
