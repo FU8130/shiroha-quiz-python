@@ -106,7 +106,7 @@ Shiroha Quiz 是一个轻量、开源的本地刷题工具，支持自导入题�
 | `banks/` | 题库文件 |
 | `quiz_parser.data/` | 运行状态、缓存、日志、云同步缓存 |
 | `quiz_parser.data/state.json` | 错题、收藏、进度、偏好（v2，带自动迁移） |
-| `quiz_parser.data/cloud.secret` | WebDAV 密码（**不要提交到 Git**） |
+| `quiz_parser.data/cloud.secret` | WebDAV 密码 |
 | `config.json` | 统一配置 |
 | `backups/` | 自动备份（改动前快照） |
 
