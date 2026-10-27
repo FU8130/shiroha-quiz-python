@@ -1,0 +1,8 @@
+{
+  "provider": "webdav",
+  "url": "https://example.com/dav/quiz",
+  "user": "your-name",
+  "remote_dir": "quiz_py",
+  "keep_local_copies": true,
+  "note": "密码请放在环境变量 QUIZ_CLOUD_PASS，不要写进本文件；本文件不要提交到任何仓库。"
+}
