@@ -62,6 +62,34 @@ class DashboardMixin:
         print(f"今日练习 {len(today_recs)} 次 · 作答 {today_q} 题 · 正确率 {today_acc:.1f}%")
         print(f"题库 {len(banks)} 个 · 当前库 {len(self.questions)} 题（{self.bank_name or '未加载'}）")
         print(f"错题 {wrong_n} 题 · 收藏 {fav_n} 题 · 进度 {min(self.current_idx + 1, max(len(self.questions), 1))}/{len(self.questions)}")
+        try:
+            from core import srs
+            due_n = sum(1 for q in self.questions
+                        if isinstance(self.srs.get(q.id), dict)
+                        and srs.due_now(self.srs[q.id])
+                        and not self.srs[q.id].get("leech"))
+            paused = sum(1 for c in self.srs.values()
+                         if isinstance(c, dict) and c.get("leech"))
+            try:
+                from core import config as _appcfg
+                _ds = int((_appcfg.load().get("srs") or {}).get("day_start", 4))
+            except Exception:
+                _ds = 4
+            day = dict(getattr(self, "srs_day", {}) or {})
+            if day.get("date") != srs.day_key(datetime.now().timestamp(), _ds):
+                day = {"new": 0, "review": 0}
+            line = (f"间隔复习：今日到期 {due_n} 题 · 已有卡片 {len(self.srs)} 张"
+                    f" · 今日新学 {day.get('new', 0)} / 复习 {day.get('review', 0)}")
+            if paused:
+                line += f" · 暂停 {paused} 张"
+            print(line)
+            _overdue, _counts = self._srs_forecast(30)
+            if _counts:
+                _day = max(_counts, key=lambda k: _counts[k])
+                print(f"未来 30 天：峰值 {_counts[_day]} 题（{_day[5:]}）"
+                      f" · 累计 {sum(_counts.values())} 题")
+        except Exception:
+            pass
         print("-" * 46)
         print(f"累计练习 {runs} 次 · 作答 {answered} 题 · 正确率 {acc:.1f}% · 用时 {int(secs // 60)} 分")
         if self.wrong_counts:

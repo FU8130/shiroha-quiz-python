@@ -173,6 +173,11 @@ class StateMixin:
         self.wrong_status = {k: str(v) for k, v in (slot.get("wrong_status") or {}).items()}
         self.wrong_last = {k: float(v) for k, v in (slot.get("wrong_last") or {}).items()}
         self.right_counts = {k: int(v) for k, v in (slot.get("right_counts") or {}).items()}
+        self.srs = {qid: dict(card) for qid, card in (slot.get("srs") or {}).items()
+                    if qid in valid and isinstance(card, dict)}
+        self.srs_day = dict(slot.get("srs_day") or {})
+        self.srs_log = [list(e) for e in (slot.get("srs_log") or [])
+                        if isinstance(e, (list, tuple)) and len(e) >= 3]
         if 0 <= slot.get("progress", 0) < len(self.questions):
             self.current_idx = slot["progress"]
 
@@ -192,6 +197,10 @@ class StateMixin:
                     # 便携/缓存重建后题目 id 会变，靠题号兜底恢复
                     "wrong_numbers": {qid: number_of.get(qid, "") for qid in self.wrong_book},
                     "fav_numbers": {qid: number_of.get(qid, "") for qid in self.favorites},
+                    "srs": {qid: dict(card) for qid, card in self.srs.items()
+                            if qid in number_of},
+                    "srs_day": dict(getattr(self, "srs_day", {}) or {}),
+                    "srs_log": [list(e) for e in (getattr(self, "srs_log", []) or [])],
                 }
         data = {
             "version": STATE_VERSION,

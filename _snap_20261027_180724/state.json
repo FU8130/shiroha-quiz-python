@@ -1,0 +1,95 @@
+{
+  "version": 2,
+  "bank_path": "banks/01_计算机技能高考完整题库.csv",
+  "current_idx": 0,
+  "auto_next": true,
+  "banks": {
+    "banks/01_计算机技能高考完整题库.csv": {
+      "content_hash": "76fa52909ea1a2e963cd6fb2004276949fad765fb82a0b84a7a8f70b4b36f2f5",
+      "wrong": [
+        "dd88b749-e86a-4993-bfca-f4837e8e7ea0",
+        "dfadbc69-e08c-4c0b-9e48-61456397c9c3",
+        "468352cd-e51e-472d-9981-49bbf02c57c4"
+      ],
+      "favorites": [
+        "dd88b749-e86a-4993-bfca-f4837e8e7ea0"
+      ],
+      "progress": 0,
+      "wrong_counts": {
+        "dd88b749-e86a-4993-bfca-f4837e8e7ea0": 3,
+        "dfadbc69-e08c-4c0b-9e48-61456397c9c3": 1,
+        "468352cd-e51e-472d-9981-49bbf02c57c4": 1
+      },
+      "wrong_status": {
+        "dd88b749-e86a-4993-bfca-f4837e8e7ea0": "复习中",
+        "dfadbc69-e08c-4c0b-9e48-61456397c9c3": "未掌握",
+        "468352cd-e51e-472d-9981-49bbf02c57c4": "未掌握"
+      },
+      "wrong_last": {
+        "dd88b749-e86a-4993-bfca-f4837e8e7ea0": 1793080496.0,
+        "dfadbc69-e08c-4c0b-9e48-61456397c9c3": 1793080892.889,
+        "468352cd-e51e-472d-9981-49bbf02c57c4": 1793085026.2471068
+      },
+      "right_counts": {
+        "dd88b749-e86a-4993-bfca-f4837e8e7ea0": 1,
+        "dfadbc69-e08c-4c0b-9e48-61456397c9c3": 0
+      },
+      "wrong_numbers": {
+        "dd88b749-e86a-4993-bfca-f4837e8e7ea0": "2",
+        "dfadbc69-e08c-4c0b-9e48-61456397c9c3": "4",
+        "468352cd-e51e-472d-9981-49bbf02c57c4": "3735"
+      },
+      "fav_numbers": {
+        "dd88b749-e86a-4993-bfca-f4837e8e7ea0": "2"
+      },
+      "srs": {},
+      "srs_day": {},
+      "srs_log": []
+    }
+  },
+  "prefs": {
+    "global": {
+      "practice": {
+        "source": "1",
+        "type": "1",
+        "count": 100,
+        "order": "1",
+        "stay": "1"
+      },
+      "exam": {
+        "name": "模拟考试",
+        "size": "50",
+        "minutes": "60",
+        "pass": "60",
+        "points": "1,2,1,1,5",
+        "type": "1",
+        "order": "1"
+      }
+    },
+    "banks": {
+      "banks/01_计算机技能高考完整题库.csv": {
+        "practice": {
+          "source": "1",
+          "type": "1",
+          "count": 100,
+          "order": "1",
+          "stay": "1"
+        },
+        "exam": {
+          "name": "模拟考试",
+          "size": "50",
+          "minutes": "60",
+          "pass": "60",
+          "points": "1,2,1,1,5",
+          "type": "1",
+          "order": "1"
+        }
+      }
+    }
+  },
+  "gui": {
+    "night_mode": "1",
+    "quiz_practice_prefs_v1": "{\"limit\":\"50\",\"customCount\":\"37\",\"type\":\"single\",\"examCount\":\"25\"}",
+    "shiroha_webdav_config_local_v378": "{\"endpoint\":\"http://127.0.0.1:5299/dav\",\"username\":\"test\",\"remoteDir\":\"ShirohaQuiz/Web\",\"rememberPassword\":false,\"lastUploadAt\":\"2026-10-27T10:06:49.109Z\",\"lastUploadFile\":\"shiroha-web-backup-20261027-100648-c78fc9d3.json\",\"lastUploadSize\":27911108,\"lastUploadSha\":\"c78fc9d3fecd89a13c45a0c4a34f0bc8ded4ebe029b1124ff8fd37b8140e3cc3\"}"
+  }
+}

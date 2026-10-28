@@ -7,8 +7,8 @@ from datetime import datetime
 from pathlib import Path
 
 from core.paths import (
-    BANKS_DIR, BASE_DIR, CACHE_DIR, CLOUD_CONFIG, HISTORY_FILE, STATE_FILE, DATA_DIR,
-    SECRET_FILE,
+    BANKS_DIR, BASE_DIR, CACHE_DIR, CLOUD_CONFIG, DATA_DIR, HISTORY_FILE, STATE_FILE,
+    SECRET_FILE, SYNC_CACHE_FILE,
 )
 from core.ui import ask, clear_screen, cyan, dim, green, red, yellow
 
@@ -226,7 +226,7 @@ class BackupMixin:
         print(f"地址：{url or '(未填)'}")
         print(f"账号：{user or '(未填)'}")
         print(f"远程目录：{remote or '(根)'}")
-        print("密码：保存在 quiz_parser.data/cloud.secret（菜单 9 设置）")
+        print("密码：保存在 config/cloud.secret（菜单 9 设置）")
         if self._confirm("要修改配置吗？"):
             new_url = ask(f"地址 (回车={url or '空'}): ").strip() or url
             new_user = ask(f"账号 (回车={user or '空'}): ").strip() or user
@@ -252,10 +252,33 @@ class BackupMixin:
             "remote": str(c.get("remote_dir") or "quiz_py").strip("/"),
             "auto_sync": bool(c.get("auto_sync", False)),
             "auto_pull": bool(c.get("auto_pull", False)),
-            "save_sync": bool(c.get("save_sync", True)),
+            "save_sync": bool(c.get("save_sync", False)),
             "ignore": list(c.get("ignore") or []),
             "sync_deletes": bool(c.get("sync_deletes", False)),
         }
+
+    def _auto_data_sync(self, reason=""):
+        """保存后立即把答题数据传到云端（数据包只有几 KB，20 秒内最多一次）。"""
+        import time as _time
+        now = _time.time()
+        if now - getattr(self, "_auto_data_at", 0.0) < 20:
+            return
+        cfg = self._auto_cfg()
+        if not cfg["url"] or not cfg["auto_sync"]:
+            return
+        from core.secret import load_password
+        pw = load_password(SECRET_FILE)
+        if cfg["user"] and not pw:
+            return
+        self._auto_data_at = now
+        try:
+            from core import cloudsync
+            from core.webdav import WebDAVClient
+            client = WebDAVClient(cfg["url"], cfg["user"], pw)
+            cloudsync.push_data(client, cfg["remote"], STATE_FILE, HISTORY_FILE,
+                                log_path=DATA_DIR / "cloud_sync.log")
+        except Exception:
+            pass            # 自动模式永远不打断答题
 
     def _auto_sync(self, reason="", force=False):
         """静默增量上传：只在配置了地址且开启自动同步时执行。"""
@@ -279,7 +302,7 @@ class BackupMixin:
                 try:
                     box["stats"] = cloudsync.push(
                         client, cfg["remote"], local,
-                        cache_path=DATA_DIR / "cloud_sync.json",
+                        cache_path=SYNC_CACHE_FILE,
                         log_path=DATA_DIR / "cloud_sync.log",
                         force=bool(force or reason == "退出"), min_interval=600)
                 except Exception as exc:  # 后台线程不抛出
@@ -322,7 +345,7 @@ class BackupMixin:
         print("=" * 46)
         print(f"1. 自动上传：{'开启' if cfg['auto_sync'] else '关闭'}")
         print(f"2. 启动时自动拉取：{'开启' if cfg['auto_pull'] else '关闭'}")
-        print(f"3. 手动保存时同步：{'开启' if cfg['save_sync'] else '关闭'}")
+        print(f"3. 保存后自动上传：{'开启' if cfg['save_sync'] else '关闭（默认）'}")
         from core import config as _app_config
         _color = _app_config.ui().get("color")
         print(f"4. 彩色输出：{'开启' if _color is not False else '关闭'}")
@@ -380,7 +403,7 @@ class BackupMixin:
             from core.webdav import WebDAVClient
             client = WebDAVClient(cfg["url"], cfg["user"], pwd)
             stats = cloudsync.pull(client, cfg["remote"], BANKS_DIR, STATE_FILE, HISTORY_FILE,
-                               cache_path=DATA_DIR / "cloud_sync.json",
+                               cache_path=SYNC_CACHE_FILE,
                                log_path=DATA_DIR / "cloud_sync.log")
             if stats["downloaded"]:
                 self.load_state()
@@ -401,7 +424,7 @@ class BackupMixin:
                                         ignore=self._auto_cfg().get("ignore"))
         try:
             stats = cloudsync.push(client, remote, local,
-                               cache_path=DATA_DIR / "cloud_sync.json",
+                               cache_path=SYNC_CACHE_FILE,
                                log_path=DATA_DIR / "cloud_sync.log", force=True)
         except WebDAVError as exc:
             print(red(f"❌ 同步失败：{exc}"))
@@ -420,7 +443,7 @@ class BackupMixin:
         from core.webdav import WebDAVError
         try:
             stats = cloudsync.pull(client, remote, BANKS_DIR, STATE_FILE, HISTORY_FILE,
-                               cache_path=DATA_DIR / "cloud_sync.json",
+                               cache_path=SYNC_CACHE_FILE,
                                log_path=DATA_DIR / "cloud_sync.log")
         except WebDAVError as exc:
             print(red(f"❌ 拉取失败：{exc}"))
@@ -484,9 +507,8 @@ class BackupMixin:
 
     def _reset_sync_cache(self):
         try:
-            from core.paths import DATA_DIR
-            for name in ("cloud_sync.json", "snapshot.sha256"):
-                p = DATA_DIR / name
+            from core.paths import DATA_DIR, SYNC_CACHE_FILE
+            for p in (SYNC_CACHE_FILE, DATA_DIR / "snapshot.sha256"):
                 if p.exists():
                     p.unlink()
         except Exception:
@@ -543,7 +565,7 @@ class BackupMixin:
             print(dim("提示：答题结束与退出程序时会自动增量上传（可在 7 里关闭）"))
             try:
                 import json as _json
-                _cache = _json.loads((DATA_DIR / "cloud_sync.json").read_text(encoding="utf-8"))
+                _cache = _json.loads(SYNC_CACHE_FILE.read_text(encoding="utf-8"))
                 if _cache.get("last_sync"):
                     _when = datetime.fromtimestamp(_cache["last_sync"]).strftime("%m-%d %H:%M")
                     print(dim(f"上次同步：{_when} · 已跟踪 {len(_cache.get('files') or {})} 个文件"))

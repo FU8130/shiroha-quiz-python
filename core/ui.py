@@ -50,6 +50,30 @@ def clear_screen():
     if sys.stdout.isatty():
         os.system('cls' if os.name == 'nt' else 'clear')
 
+def status_bar(status, idx, limit=60):
+    """每格代表一道题：█答对 ▓答错 ·未答（跳过同未答）。
+
+    当前题用 [ ] 框住，框内仍保留答题状态，位置与状态互不覆盖。
+    """
+    n = len(status)
+    if n == 0:
+        return ""
+    step = max(1, (n + limit - 1) // limit)
+    cells = []
+    for start in range(0, n, step):
+        chunk = status[start:start + step]
+        if "bad" in chunk:
+            cell = red("▓")
+        elif "ok" in chunk:
+            cell = green("█")
+        else:
+            cell = dim("·")
+        if start <= idx < start + step:
+            cell = "[" + cell + "]"
+        cells.append(cell)
+    return "".join(cells)
+
+
 def progress_bar(done, total, width=20):
     total = max(1, total)
     filled = int(width * min(done, total) / total)
@@ -72,6 +96,27 @@ class KeyReader:
             return bool(sys.stdin) and sys.stdin.isatty() and sys.stdout.isatty()
         except Exception:
             return False
+
+    @staticmethod
+    def getch_timeout(seconds=0.25):
+        """等待最多 seconds 秒；有按键返回字符，超时返回 None（仅交互终端）。"""
+        if os.name == "nt":
+            import msvcrt
+            import time as _time
+            end = _time.monotonic() + seconds
+            while _time.monotonic() < end:
+                if msvcrt.kbhit():
+                    return KeyReader.getch()
+                _time.sleep(0.02)
+            return None
+        import select
+        try:
+            ready, _, _ = select.select([sys.stdin], [], [], seconds)
+        except Exception:
+            return None
+        if not ready:
+            return None
+        return KeyReader.getch()
 
     @staticmethod
     def getch():

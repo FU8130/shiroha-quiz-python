@@ -9,7 +9,7 @@ import time
 from quiz_parser.models import QuestionType
 
 from core.paths import bank_abs_path
-from core.ui import (
+from core.ui import (status_bar, 
     KeyReader, ask, bold, clear_screen, cyan, dim, green, progress_bar, red, yellow,
 )
 
@@ -19,9 +19,14 @@ class PracticeMixin:
         clear_screen()
         answered = sum(1 for s in status if s in ("ok", "bad"))
         correct = sum(1 for s in status if s == "ok")
-        head = f"{progress_bar(idx, total)} {idx + 1}/{total}"
-        stats = f"✅{correct}  ❌{answered - correct}  ⭐{len(self.favorites)}"
+        bar = status_bar(status, idx) if status else progress_bar(idx, total)
+        head = f"{bar} {idx + 1}/{total}"
+        answered_now = sum(1 for s in status if s in ("ok", "bad"))
+        stats = f"✅{correct}  ❌{answered - correct}  ⭐{len(self.favorites)}  已答{answered_now}"
         print(f"{cyan(head)}   {dim(stats)}   {dim(self.bank_name)}")
+        if total > 60:
+            per = (total + 59) // 60
+            print(dim(f"   进度条：共 {total} 题，每格约 {per} 题；格内有错标红，无错有对标绿"))
         if marked and idx in marked:
             print(yellow("★ 已标记"))
         print("-" * 46)
@@ -32,9 +37,16 @@ class PracticeMixin:
         for line in textwrap.wrap(q.question, width=44) or [""]:
             print(line)
         print()
+        previous = (getattr(self, "_session_answers", {}) or {}).get(q.id)
         if q.options:
             for opt in q.options:
-                print(f"  {bold(opt.key)}. {opt.text}")
+                chosen = previous and opt.key in previous
+                arrow = green("▸ ") if chosen else "  "
+                print(f" {arrow}{bold(opt.key)}. {opt.text}")
+            print()
+        if previous:
+            tag = green("你的答案：") if status[idx] == "ok" else red("你的答案：")
+            print(tag + bold(previous))
             print()
 
     @staticmethod
@@ -48,8 +60,6 @@ class PracticeMixin:
                 n = green(n)
             elif s == "bad":
                 n = red(n)
-            elif s == "skip":
-                n = yellow(n)
             else:
                 n = dim(n)
             if (i + 1) in marked:
@@ -97,7 +107,7 @@ class PracticeMixin:
                 sys.stdout.write(ch)
                 sys.stdout.flush()
 
-    def _read_action(self, q, current, status, marked, total=None, is_exam=False):
+    def _read_action(self, q, current, status, marked, total=None, is_exam=False, deadline=None):
         """读一次操作。终端下单键即时生效；重定向时退化为整行输入。
 
         返回 (kind, text)：
@@ -106,7 +116,7 @@ class PracticeMixin:
         prompt = cyan("👉 答案 ") + dim(
             "(A-H / 1-8 作答 · Enter 提交 · / 前缀命令 · #12 跳题 · [ ] 上下题)")
         hint = "> "
-        print(dim("   命令：/F 收藏 /M 标记 /B 答题卡 /A 答案 /E 编辑 /S 跳过 /Q 退出 · F2 收藏 F3 标记 ; 看答案"))
+        print(dim("   命令：/F 收藏 /M 标记 /B 答题卡 /A 答案 /E 编辑 /S 跳过 /Q 退出 · F2 收藏 F4 标记 ; 看答案"))
 
         def prompt_text():
             star = "★" if q.id in self.favorites else "☆"
@@ -114,7 +124,12 @@ class PracticeMixin:
             return dim(f"[{star}{mark}] ") + "> "
 
         def redraw(buf=""):
-            sys.stdout.write("\r\033[K" + prompt_text() + buf)
+            # 单行锁定：先擦本行再重画；有 deadline 时右侧带秒级倒计时
+            extra = ""
+            if deadline:
+                rem = max(0, int(deadline - time.time()))
+                extra = "  " + dim(f"⏱ {rem // 60:02d}:{rem % 60:02d}")
+            sys.stdout.write("\r" + " " * 72 + "\r" + prompt_text() + buf + extra)
             sys.stdout.flush()
 
         valid_keys = {o.key.upper() for o in q.options} or set("ABCD")
@@ -154,7 +169,7 @@ class PracticeMixin:
         # 只给“需要反复按的开关”配功能键；其余保持 / 命令或已有单键
         FUNC_MAP = {
             "F2": "f",   # 收藏 / 取消（可反复按）
-            "F3": "m",   # 标记 / 取消（可反复按）
+            "F4": "m",   # 标记 / 取消（F3 在 VSCode 被占用）
         }
 
         def exec_cmd(letter):
@@ -183,7 +198,7 @@ class PracticeMixin:
                 if self._save_bank_file(bank_abs_path(self.bank_path), self.questions):
                     print(green("✅ 改动已写回题库"))
                 return None
-            print(dim("未知命令：/F /M /B /A /E /S /Q（F2 收藏 / F3 标记 / ; 看答案）"))
+            print(dim("未知命令：/F /M /B /A /E /S /Q（F2 收藏 / F4 标记 / ; 看答案）"))
             return None
 
         if not KeyReader.available():
@@ -257,12 +272,25 @@ class PracticeMixin:
         print(prompt)
         sys.stdout.write(hint)
         sys.stdout.flush()
-        buf = ""
+        prev = (getattr(self, "_session_answers", {}) or {}).get(q.id, "") or ""
+        buf = "".join(ch for ch in prev.upper() if ch in valid_keys)
+        if single_only:
+            buf = buf[:1]
+        if buf:
+            redraw(buf)
         slash = False
         empty_enters = 0
         while True:
             try:
-                ch = KeyReader.getch()
+                if deadline:
+                    if time.time() >= deadline:
+                        return "timeout", ""
+                    ch = KeyReader.getch_timeout(0.2)
+                    if ch is None:
+                        redraw(buf)
+                        continue
+                else:
+                    ch = KeyReader.getch()
             except (KeyboardInterrupt, EOFError):
                 print()
                 return "back", ""
@@ -288,7 +316,6 @@ class PracticeMixin:
                 slash = False
                 if ch in ("\r", "\n", "\x1b", "\x08", "\x7f"):
                     continue
-                sys.stdout.write("\n")
                 res = exec_cmd(ch)
                 if res:
                     return res
@@ -332,12 +359,13 @@ class PracticeMixin:
             if ch.isdigit():
                 mapped_key = key_for_digit(ch)
                 if mapped_key and mapped_key in valid_keys:
-                    if single_only and buf:
-                        continue
-                    if mapped_key not in buf:
+                    if single_only:
+                        buf = mapped_key
+                    elif mapped_key in buf:
+                        buf = buf.replace(mapped_key, "")   # 多选：再按一次取消
+                    else:
                         buf += mapped_key
-                        sys.stdout.write(mapped_key)
-                        sys.stdout.flush()
+                    redraw(buf)
                 continue
 
             if ch == ";":
@@ -359,12 +387,13 @@ class PracticeMixin:
 
             upper = ch.upper()
             if upper in valid_keys:
-                if single_only and buf:
-                    continue          # 单选题只允许一个选项
-                if upper not in buf:
+                if single_only:
+                    buf = upper          # 单选：直接替换，无需退格
+                elif upper in buf:
+                    buf = buf.replace(upper, "")   # 多选：再按一次取消
+                else:
                     buf += upper
-                    sys.stdout.write(upper)
-                    sys.stdout.flush()
+                redraw(buf)
                 continue
             if upper.isalnum():
                 continue              # 不在选项里的字母/数字，直接忽略
@@ -427,7 +456,7 @@ class PracticeMixin:
             return default
         return ch in ("y", "yes", "是")
 
-    def _ask_question(self, q, current, total, is_exam=False, status=None, marked=None):
+    def _ask_question(self, q, current, total, is_exam=False, status=None, marked=None, deadline=None):
         """返回 (是否正确, 是否退出, 是否跳过, 跳转目标)。"""
         if q.type in (QuestionType.SHORT, QuestionType.BLANK):
             print(f"\n💡 参考答案: {''.join(q.answer)}")
@@ -447,43 +476,59 @@ class PracticeMixin:
                 return False, True, False, None
             return True, key in ("q", "quit"), False, None
 
-        kind, text = self._read_action(q, current, status, marked, total=total, is_exam=is_exam)
+        kind, text = self._read_action(q, current, status, marked, total=total, is_exam=is_exam, deadline=deadline)
         if kind == "back":
             return False, True, False, None
         if kind == "skip":
             return False, False, True, None
+        if kind == "timeout":
+            return False, True, False, None
         if kind == "quit":
             return False, True, False, None
         if kind == "jump":
             n = int(text) if text.isdigit() else None
             return False, False, False, n
 
+        if not hasattr(self, "_session_answers"):
+            self._session_answers = {}
+        prev = (self._session_answers.get(q.id) or "").upper()
+        repeat = bool(prev) and text.upper() == prev   # 与上次完全一致：只回放结果，不重复计数
+        self._session_answers[q.id] = text
         is_correct = self.check_answer(q, text)
+        if repeat:
+            print(dim("（与上次答案相同，未重复计入）"))
         if is_correct:
             print(green("✅ 正确"))
-            if q.id in self.wrong_book:
-                self.right_counts[q.id] = self.right_counts.get(q.id, 0) + 1
-                if self.right_counts[q.id] >= 2:
-                    self.wrong_status[q.id] = "已掌握"
-                else:
-                    self.wrong_status[q.id] = "复习中"
-            self.wrong_counts.pop(q.id, None)
+            if not repeat:
+                if q.id in self.wrong_book:
+                    self.right_counts[q.id] = self.right_counts.get(q.id, 0) + 1
+                    if self.right_counts[q.id] >= 2:
+                        self.wrong_status[q.id] = "已掌握"
+                    else:
+                        self.wrong_status[q.id] = "复习中"
+                self.wrong_counts.pop(q.id, None)
         else:
             correct_text = "；".join(f"{o.key}. {o.text}" for o in q.options if o.key in q.answer)
             print(red(f"❌ 错误，正确答案：{''.join(q.answer)}" + (f"（{correct_text}）" if correct_text else "")))
-            if q.id not in self.wrong_book:
-                self.wrong_book.append(q.id)
-            self.wrong_counts[q.id] = self.wrong_counts.get(q.id, 0) + 1
-            self.wrong_status[q.id] = "未掌握"
-            self.wrong_last[q.id] = time.time()
+            if not repeat:
+                if q.id not in self.wrong_book:
+                    self.wrong_book.append(q.id)
+                self.wrong_counts[q.id] = self.wrong_counts.get(q.id, 0) + 1
+                self.wrong_status[q.id] = "未掌握"
+                self.wrong_last[q.id] = time.time()
         if not is_exam and q.analysis:
             for line in textwrap.wrap(q.analysis, width=44):
                 print(f"📝 {dim(line)}")
         self.save_state()
+        try:
+            self._auto_data_sync("答题保存")
+        except Exception:
+            pass
         return is_correct, False, False, None
 
     def _run_practice_loop(self, q_list, mode_name, ask_continue=True):
         total = len(q_list)
+        self._session_answers = {}      # 每轮练习重新开始：回看与“重复提交”只在本轮内生效
         status = ["unanswered"] * total
         marked = set()
         start_time = time.time()
@@ -633,6 +678,377 @@ class PracticeMixin:
         elif answered:
             print(green("\n✨ 本轮全对！"))
         return wrong
+
+    def review_due(self):
+        """间隔复习（FSRS-6）：到期卡先来，再补新卡；带学习步长/每日上限/Leech/撤销。"""
+        if not self.questions:
+            print("⚠️ 请先导入题库！")
+            ask()
+            return
+        from core import srs
+        from core import config as appcfg
+        try:
+            srs_cfg = dict(appcfg.load().get("srs") or {})
+        except Exception:
+            srs_cfg = {}
+        new_per_day = max(0, int(srs_cfg.get("new_per_day", 20)))
+        review_per_day = max(0, int(srs_cfg.get("review_per_day", 200)))
+        raw_steps = srs_cfg.get("steps") or [1, 10]
+        steps = tuple(float(m) * 60.0 for m in raw_steps if float(m) > 0)
+        steps = steps or srs.STEPS_DEFAULT
+        relearn = steps[-1]
+        leech = max(1, int(srs_cfg.get("leech", 8)))
+        day_start = max(0, min(23, int(srs_cfg.get("day_start", 4))))
+        fuzz = max(0.0, min(0.5, float(srs_cfg.get("fuzz", 0.05) or 0.0)))
+        ahead_min = max(0.0, float(srs_cfg.get("learn_ahead", 20) or 0.0))
+        learn_ahead = ahead_min * 60.0
+
+        now = time.time()
+        cards = {qid: dict(card) for qid, card in (getattr(self, "srs", {}) or {}).items()}
+        if not cards:
+            if not self._confirm(f"题库还没有复习卡，为全部 {len(self.questions)} 题建卡？"):
+                return
+            cards = {q.id: srs.new_card(now) for q in self.questions}
+
+        today = srs.day_key(now, day_start)
+        day = dict(getattr(self, "srs_day", {}) or {})
+        if day.get("date") != today:
+            day = {"date": today, "new": 0, "review": 0}
+        self.srs_day = day
+        rem_new = max(0, new_per_day - int(day.get("new", 0)))
+        rem_rev = max(0, review_per_day - int(day.get("review", 0)))
+        paused = sum(1 for c in cards.values() if c.get("leech"))
+
+        queue = srs.build_queue(cards, self.questions, now,
+                                new_limit=rem_new, review_limit=rem_rev,
+                                learn_ahead=learn_ahead)
+        if not queue:
+            nxt = min((float(c.get("due", 0)) for c in cards.values()
+                       if not c.get("leech") and not srs.due_now(c, now)), default=0)
+            print(green("✅ 今天的复习已清空。"))
+            print(dim(f"今日已新学 {day.get('new', 0)}/{new_per_day}，"
+                      f"已复习 {day.get('review', 0)}/{review_per_day}"))
+            if paused:
+                print(dim(f"⏸ 暂停的顽固卡（连续答错 {leech} 次）：{paused} 张"))
+            if nxt:
+                print(dim("下次到期：" + time.strftime("%Y-%m-%d %H:%M", time.localtime(nxt))))
+            print(dim(f"卡片总数 {len(cards)}"))
+            ask()
+            return
+
+        by_id = {q.id: q for q in self.questions}
+        pending = [(by_id[qid], is_new) for qid, is_new in queue if qid in by_id]
+        status = ["unanswered"] * len(pending)
+        marked = set()
+        self._session_answers = {}
+        self.srs = cards
+        start_time = time.time()
+        answered = correct = 0
+        last = None          # (qid, 评分前卡片, 评分前计数, 是否新卡)
+        i = 0
+        try:
+            while i < len(pending):
+                q, is_new = pending[i]
+                self._render_question(q, i, len(pending), status, marked)
+                _c = cards.get(q.id) or {}
+                _soon = (not is_new
+                         and _c.get("state") in ("learning", "relearning")
+                         and now < float(_c.get("due", 0)) <= now + learn_ahead)
+                if is_new:
+                    _tag = "🆕 新卡，首次学习"
+                elif _soon:
+                    _tag = f"⏩ 提前复习（{ahead_min:.0f} 分钟内到期）"
+                else:
+                    _tag = "🔁 到期复习"
+                print(dim(_tag))
+                ok, quit_flag, skipped, _jump = self._ask_question(
+                    q, i + 1, len(pending), status=status, marked=marked)
+                if quit_flag:
+                    break
+                if skipped:
+                    i += 1
+                    continue
+                default = 3 if ok else 1
+                try:
+                    raw = ask(dim(f"\n评分 1=重来 2=困难 3=一般 4=容易"
+                                  f"（回车默认 {default}，u=撤销上一题）> ")).strip()
+                except (EOFError, KeyboardInterrupt):
+                    break
+                if raw.lower() in ("q", "quit"):
+                    break
+                if raw.lower() in ("u", "undo") and last:
+                    lqid, before, day_before, lnew = last
+                    cards[lqid] = before
+                    self.srs_day = dict(day_before)
+                    self.srs = cards
+                    back = next((k for k, (qq, _n) in enumerate(pending)
+                                 if qq.id == lqid), None)
+                    if back is not None and back < i:
+                        status[back] = "unanswered"
+                        i = back
+                    last = None
+                    print(dim("↩ 已撤销上一题，重新作答。"))
+                    continue
+                rating = int(raw) if raw in ("1", "2", "3", "4") else default
+                before_card = dict(cards[q.id]) if q.id in cards else srs.new_card(now)
+                before_day = dict(self.srs_day)
+                cards[q.id] = srs.review(cards.get(q.id) or srs.new_card(now), rating,
+                                         now=time.time(), steps=steps,
+                                         relearn=relearn, leech=leech,
+                                         fuzz=fuzz)
+                self.srs_day["new" if is_new else "review"] += 1
+                self.srs_log.append([int(time.time()), q.id, rating])
+                if len(self.srs_log) > 5000:
+                    del self.srs_log[:-5000]
+                self.srs = cards
+                last = (q.id, before_card, before_day, is_new)
+                status[i] = "ok" if ok else "bad"
+                answered += 1
+                if ok:
+                    correct += 1
+                card = cards[q.id]
+                print(dim(f"→ {srs.human_state(card)}，下次：{srs.human_interval(card)}"
+                          f"（稳定度 {card['s']:.1f} 天，难度 {card['d']:.1f}，"
+                          f"遗忘 {card.get('lapses', 0)}）"))
+                if card.get("leech"):
+                    print(dim(f"⏸ 连续答错 {leech} 次，已暂停，先不排期。"))
+                self.save_state()
+                i += 1
+        finally:
+            self._session_answers = {}
+
+        q_list = [q for q, _ in pending]
+        elapsed = time.time() - start_time
+        print(dim(f"今日已新学 {self.srs_day.get('new', 0)}/{new_per_day}，"
+                  f"已复习 {self.srs_day.get('review', 0)}/{review_per_day}"))
+        self._summary(q_list, status[:len(q_list)], marked, elapsed,
+                      "间隔复习", answered, correct)
+        try:
+            self._auto_sync("间隔复习结束")
+        except Exception:
+            pass
+        if answered:
+            details = [{"n": str(q.number), "q": q.question.replace("\n", " ")[:30], "ok": st == "ok"}
+                       for q, st in zip(q_list, status) if st in ("ok", "bad")]
+            self.save_history("间隔复习", answered, correct, elapsed, details)
+        self._pause("按任意键返回...")
+
+    _RATING_TEXT = {0: "重置", -1: "暂停", -2: "恢复", 1: "重来", 2: "困难",
+                    3: "一般", 4: "容易"}
+
+    def _find_question(self, text):
+        text = (text or "").strip().lstrip("#")
+        if not text.isdigit():
+            return None
+        n = int(text)
+        for q in self.questions:
+            try:
+                if int(getattr(q, "number", 0) or 0) == n:
+                    return q
+            except (TypeError, ValueError):
+                continue
+        return None
+
+    def _srs_forecast(self, days=30):
+        """按到期日统计未来 N 天（不含已暂停），返回 (已到期数, {日期: 数量})。"""
+        import datetime
+        from core import srs
+        now = time.time()
+        today = datetime.date.today()
+        overdue = 0
+        counts = {}
+        for q in self.questions:
+            card = self.srs.get(q.id)
+            if not isinstance(card, dict) or card.get("leech"):
+                continue
+            due = float(card.get("due", 0))
+            if srs.due_now(card, now):
+                overdue += 1
+                continue
+            d = datetime.date.fromtimestamp(due)
+            span = (d - today).days
+            if 0 < span <= days:
+                counts[d.isoformat()] = counts.get(d.isoformat(), 0) + 1
+        return overdue, counts
+
+    def _srs_recent(self, limit=40):
+        by_id = {q.id: q for q in self.questions}
+        rows = [e for e in (getattr(self, "srs_log", []) or [])
+                if len(e) >= 3 and e[1] in by_id]
+        return rows[-limit:]
+
+    def srs_manage(self):
+        """复习管理：逐卡记录、单卡重置/暂停、未来 30 天预测。"""
+        if not self.questions:
+            print("⚠️ 请先导入题库！")
+            ask()
+            return
+        from core import srs
+        from core import config as appcfg
+        by_id = {q.id: q for q in self.questions}
+        while True:
+            now = time.time()
+            cards = self.srs
+            total = len(cards)
+            paused = sum(1 for c in cards.values() if isinstance(c, dict) and c.get("leech"))
+            learning = sum(1 for c in cards.values() if isinstance(c, dict) and srs.is_learning(c))
+            due = sum(1 for q in self.questions
+                      if isinstance(cards.get(q.id), dict) and srs.due_now(cards[q.id], now)
+                      and not cards[q.id].get("leech"))
+            clear_screen()
+            print("=" * 46)
+            print("           🧠 复习管理（FSRS-6）")
+            print("=" * 46)
+            print(f"卡片 {total} 张 · 今日到期 {due} · 学习中 {learning} · 暂停 {paused}"
+                  f" · 记录 {len(getattr(self, 'srs_log', []))} 条")
+            print("-" * 46)
+            print("  1. 最近复习记录      2. 查某题历史")
+            print("  3. 未来 30 天预测    4. 重置某题")
+            print("  5. 暂停/恢复某题     6. 重置全部卡片")
+            print("  7. 复习设置          0. 返回")
+            choice = ask("> ").strip()
+            if choice in ("0", "", "q"):
+                return
+            if choice == "1":
+                rows = self._srs_recent(40)
+                if not rows:
+                    print("还没有复习记录。")
+                else:
+                    print(f"最近 {len(rows)} 条（新的在下）：")
+                    for ts, qid, rating in rows:
+                        qq = by_id.get(qid)
+                        if not qq:
+                            continue
+                        label = self._RATING_TEXT.get(int(rating), str(rating))
+                        when = time.strftime("%m-%d %H:%M", time.localtime(float(ts)))
+                        print(f"  {when}  #{qq.number:>4}  {label:<4} "
+                              f"{qq.question.replace(chr(10), ' ')[:22]}")
+                self._pause("按任意键返回...")
+            elif choice == "2":
+                qq = self._find_question(ask("题号（如 12 或 #12）: "))
+                if not qq:
+                    print("⚠️ 没找到这个题号。")
+                else:
+                    card = self.srs.get(qq.id)
+                    print(f"#{qq.number} {qq.question.replace(chr(10), ' ')[:40]}")
+                    if isinstance(card, dict):
+                        print(f"  状态 {srs.human_state(card)} · 稳定度 {card.get('s', 0):.2f} 天"
+                              f" · 难度 {card.get('d', 0):.2f} · 遗忘 {card.get('lapses', 0)}"
+                              f" · 下次 {srs.human_interval(card)}")
+                    history = [e for e in (getattr(self, "srs_log", []) or [])
+                               if len(e) >= 3 and e[1] == qq.id]
+                    if not history:
+                        print("  该题还没有复习记录。")
+                    else:
+                        print(f"  最近 {min(len(history), 20)} 条：")
+                        for ts, _qid, rating in history[-20:]:
+                            label = self._RATING_TEXT.get(int(rating), str(rating))
+                            when = time.strftime("%Y-%m-%d %H:%M", time.localtime(float(ts)))
+                            print(f"    {when}  {label}")
+                self._pause("按任意键返回...")
+            elif choice == "3":
+                overdue, counts = self._srs_forecast(30)
+                print(f"已到期 {overdue} 题")
+                if not counts:
+                    print("未来 30 天没有排期。")
+                else:
+                    peak = max(counts.values())
+                    for day in sorted(counts):
+                        n = counts[day]
+                        bar = "█" * max(1, round(n / peak * 30))
+                        print(f"  {day[5:]}  {n:>4}  {bar}")
+                    print(f"合计 {sum(counts.values())} 题 · 峰值 {peak} 题/天")
+                self._pause("按任意键返回...")
+            elif choice == "4":
+                qq = self._find_question(ask("要重置的题号: "))
+                if not qq:
+                    print("⚠️ 没找到这个题号。")
+                elif not self._confirm(f"把 #{qq.number} 重置为新卡（清空稳定度/难度）？"):
+                    print("已取消。")
+                else:
+                    self.srs[qq.id] = srs.new_card(time.time())
+                    self.srs_log.append([int(time.time()), qq.id, 0])
+                    self.save_state()
+                    print(green(f"✅ #{qq.number} 已重置为新卡。"))
+                self._pause("按任意键返回...")
+            elif choice == "5":
+                qq = self._find_question(ask("要暂停/恢复的题号: "))
+                if not qq:
+                    print("⚠️ 没找到这个题号。")
+                else:
+                    card = dict(self.srs.get(qq.id) or srs.new_card(time.time()))
+                    if card.get("leech"):
+                        card["leech"] = False
+                        card["lapses"] = 0
+                        self.srs_log.append([int(time.time()), qq.id, -2])
+                        print(green(f"▶ #{qq.number} 已恢复。"))
+                    else:
+                        card["leech"] = True
+                        self.srs_log.append([int(time.time()), qq.id, -1])
+                        print(dim(f"⏸ #{qq.number} 已暂停，不再排期。"))
+                    self.srs[qq.id] = card
+                    self.save_state()
+                self._pause("按任意键返回...")
+            elif choice == "7":
+                cfg = appcfg.load()
+                cur = dict(cfg.get("srs") or {})
+                print("复习设置（直接回车保持不变）：")
+
+                def _ask_int(label, key, lo, hi):
+                    raw = ask(f"  {label}（当前 {cur.get(key)}）: ").strip()
+                    if raw:
+                        try:
+                            cur[key] = max(lo, min(hi, int(raw)))
+                        except ValueError:
+                            print("   ⚠️ 不是整数，保持原值")
+
+                _ask_int("每日新卡上限", "new_per_day", 0, 9999)
+                _ask_int("每日复习上限", "review_per_day", 0, 9999)
+                _ask_int("Leech 阈值（连续答错几次暂停）", "leech", 1, 99)
+                _ask_int("日切点（0-23 点，默认 4 点换天）", "day_start", 0, 23)
+                raw = ask(f"  间隔模糊 %（当前 {float(cur.get('fuzz', 0.05)) * 100:.0f}，"
+                          f"0-50）: ").strip()
+                if raw:
+                    try:
+                        cur["fuzz"] = max(0.0, min(0.5, float(raw) / 100.0))
+                    except ValueError:
+                        print("   ⚠️ 不是数字，保持原值")
+                raw = ask(f"  学习提前分钟（当前 {cur.get('learn_ahead', 20)}，0 关闭）: ").strip()
+                if raw:
+                    try:
+                        cur["learn_ahead"] = max(0, min(120, int(raw)))
+                    except ValueError:
+                        print("   ⚠️ 不是整数，保持原值")
+                raw = ask("  学习步长（分钟，逗号分隔，如 1,10）: ").strip()
+                if raw:
+                    try:
+                        vals = [float(x) for x in raw.replace("，", ",").split(",") if x.strip()]
+                        vals = [v for v in vals if v > 0]
+                        if vals:
+                            cur["steps"] = vals
+                    except ValueError:
+                        print("   ⚠️ 格式不对，保持原值")
+                cfg["srs"] = cur
+                appcfg.save(cfg)
+                print("✅ 复习设置已保存。")
+                self._pause("按任意键返回...")
+            elif choice == "6":
+                print("⚠️ 这会清空全部卡片的学习进度（题库本身不动）。")
+                if ask('输入 RESET 确认: ').strip() != "RESET":
+                    print("已取消。")
+                    self._pause("按任意键返回...")
+                    continue
+                now = time.time()
+                self.srs = {q.id: srs.new_card(now) for q in self.questions}
+                try:
+                    _ds = int((appcfg.load().get("srs") or {}).get("day_start", 4))
+                except Exception:
+                    _ds = 4
+                self.srs_day = {"date": srs.day_key(now, _ds), "new": 0, "review": 0}
+                self.srs_log = []
+                self.save_state()
+                print(green("✅ 全部卡片已重置。"))
+                self._pause("按任意键返回...")
 
     def practice_settings(self):
         if not self.questions:

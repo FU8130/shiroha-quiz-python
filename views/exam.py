@@ -68,6 +68,7 @@ class ExamMixin:
         start_time = time.time()
         status = ["unanswered"] * len(q_list)
         marked = set()
+        self._session_answers = {}
         correct_count = 0
         answered = 0
         idx = 0
@@ -81,10 +82,14 @@ class ExamMixin:
                     break
                 q = q_list[idx]
                 self._render_question(q, idx, len(q_list), status, marked)
-                print(dim(f"⏱ 剩余 {int((time_limit - (time.time() - start_time)) // 60)} 分"))
                 is_correct, quit_flag, skipped, jump = self._ask_question(
-                    q, idx + 1, len(q_list), is_exam=True, status=status, marked=marked)
+                    q, idx + 1, len(q_list), is_exam=True, status=status, marked=marked,
+                    deadline=start_time + time_limit)
                 if quit_flag:
+                    if time.time() - start_time > time_limit:
+                        print(red("\n⏰ 时间到，自动交卷！"))
+                        timed_out = True
+                        break
                     if not self._confirm("确定交卷？"):
                         continue
                     timed_out = True

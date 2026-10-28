@@ -42,7 +42,7 @@ from views.records import RecordsMixin
 from views.dashboard import DashboardMixin
 from core.menu import MenuRegistry
 from core.state import StateMixin
-APP_VERSION = "0.9.1"
+APP_VERSION = "0.12.1"
 
 
 
@@ -65,7 +65,7 @@ def _check_portable_root():
 
 def _portable_selfcheck():
     """启动自检：密码档位、配置路径、题库 key、缓存体积，写 logs/selfcheck.log。"""
-    from core.paths import BASE_DIR, DATA_DIR, CACHE_DIR
+    from core.paths import BASE_DIR, CACHE_DIR, DATA_DIR, SECRET_FILE
     from core import config
     lines = []
     try:
@@ -73,7 +73,7 @@ def _portable_selfcheck():
         url = (cfg.get("cloud") or {}).get("url") or ""
         if url and "://" not in url:
             lines.append("配置异常：cloud.url 不是合法 URL")
-        secret = DATA_DIR / "cloud.secret"
+        secret = SECRET_FILE
         if secret.exists():
             mode = secret.read_text(encoding="utf-8").strip()[:6]
             lines.append(f"密码保存方式：{'DPAPI 加密' if mode.startswith('dpapi') else '明文（便携档）'}")
@@ -214,6 +214,9 @@ class ShirohaQuiz(PracticeMixin, ExamMixin, BanksMixin, RecordsMixin, DashboardM
         self.wrong_status = {}
         self.wrong_last = {}
         self.right_counts = {}
+        self.srs = {}
+        self.srs_day = {}
+        self.srs_log = []
         self.prefs = {"global": {}, "banks": {}}
         self.favorites = []
         self.current_idx = 0
@@ -354,6 +357,8 @@ D. 音箱
         menu.add("8", "备份与恢复", self.backup_data)
         menu.add("9", "搜索题目", self.search_questions)
         menu.add("10", "统计总览", self.show_dashboard)
+        menu.add("11", "间隔复习", self.review_due)
+        menu.add("12", "复习管理", self.srs_manage)
         menu.add("s", "保存数据", self._menu_save)
         menu.add("0", "退出", self._menu_quit)
         try:
@@ -372,7 +377,7 @@ D. 音箱
             cfg = self._auto_cfg()
         except Exception:
             pass
-        if cfg.get("url") and cfg.get("save_sync", True):
+        if cfg.get("url") and cfg.get("save_sync", False):
             print(green("✅ 已保存，正在同步云端..."))
             try:
                 self._auto_sync("手动保存", force=True)
@@ -444,7 +449,47 @@ D. 音箱
                 raise
 
 
+def _cli():
+    """最小命令行：--dump-json 给 GUI/脚本取数，--version 打印版本。"""
+    import sys as _sys
+
+    args = _sys.argv[1:]
+    if "--version" in args:
+        print(APP_VERSION)
+        return True
+    if "--web" in args:
+        from gui.server import serve
+        port = 0
+        if "--port" in args:
+            try:
+                port = int(args[args.index("--port") + 1])
+            except (ValueError, IndexError):
+                port = 0
+        # 局域网访问：--lan 等价于 --host 0.0.0.0；显式 --host 优先于 --lan
+        host = "0.0.0.0" if "--lan" in args else ("127.0.0.1" if "--local" in args else "")
+        if "--host" in args:
+            _i = args.index("--host")
+            if _i + 1 < len(args) and not args[_i + 1].startswith("--"):
+                host = args[_i + 1]
+        # 可选访问口令：不传 = 不校验（默认行为不变）
+        token = ""
+        if "--token" in args:
+            _i = args.index("--token")
+            if _i + 1 < len(args) and not args[_i + 1].startswith("--"):
+                token = args[_i + 1]
+        serve(port=port, host=host, open_browser="--no-browser" not in args, token=token)
+        return True
+    if "--dump-json" in args:
+        import json as _json
+        from services.banks import dump
+        print(_json.dumps(dump(), ensure_ascii=False, indent=2))
+        return True
+    return False
+
+
 if __name__ == "__main__":
+    if _cli():
+        raise SystemExit(0)
     app = ShirohaQuiz()
     exit_handler.app = app
     signal.signal(signal.SIGINT, exit_handler.signal_handler)

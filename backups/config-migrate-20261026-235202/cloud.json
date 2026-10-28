@@ -1,0 +1,11 @@
+{
+  "url": "https://dav.jianguoyun.com/dav/",
+  "user": "18671335701@139.com",
+  "remote_dir": "quiz_py",
+  "auto_sync": true,
+  "auto_pull": false,
+  "ignore": [
+    "*.tmp",
+    "~$*"
+  ]
+}
