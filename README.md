@@ -36,7 +36,6 @@ Shiroha Quiz 是一个轻量、开源的本地刷题工具，支持自导入题�
 
 ## 怎么用
 
-> 以下步骤在作者**上传完整文件之后**才适用。
 
 1. **装 Python**：去 [python.org](https://www.python.org/downloads/) 下载安装。Windows 安装时**一定要勾选** `Add Python to PATH`。建议 Python 3.12 或更新（作者在 3.14 上开发）。
 2. **下载本项目**：右上角 `Code` → `Download ZIP`，解压到一个文件夹。
